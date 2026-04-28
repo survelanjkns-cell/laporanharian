@@ -1,5 +1,3 @@
-Here is the complete, fully updated app.py script based on our conversation. It includes all your formatting requirements, logic for dates and epidemiological weeks, calculations for the uploaded files, and the exact Google Sheet IDs and GIDs you provided to automatically pull in the external tables.
-app.py
 import streamlit as st
 import pandas as pd
 import datetime
