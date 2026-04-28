@@ -64,6 +64,9 @@ if file_enotif and file_outbreak:
                             
                     # Remove hidden spaces and make uppercase for easy searching
                     df.columns = df.columns.astype(str).str.strip().str.upper()
+                    
+                    # Prevent "cannot assemble with duplicate keys" by dropping duplicate empty columns
+                    df = df.loc[:, ~df.columns.duplicated()]
                     return df
 
 
@@ -77,13 +80,13 @@ if file_enotif and file_outbreak:
                         break
                         
                 if 'Penyakit' not in df_enotif.columns:
-                    # Added brackets to target single columns and avoid Grouper error
-                    if len(df_enotif.columns) > 127:
-                        fallback_col = df_enotif.columns # Column DX
-                    elif len(df_enotif.columns) > 1:
-                        fallback_col = df_enotif.columns[2] 
+                    cols_list = df_enotif.columns.tolist()
+                    if len(cols_list) > 127:
+                        fallback_col = cols_list # Column DX
+                    elif len(cols_list) > 1:
+                        fallback_col = cols_list[1] 
                     else:
-                        fallback_col = df_enotif.columns 
+                        fallback_col = cols_list 
                     df_enotif.rename(columns={fallback_col: 'Penyakit'}, inplace=True)
 
 
@@ -95,11 +98,17 @@ if file_enotif and file_outbreak:
                         break
                 
                 if pkd_col_name is None:
-                    # Added brackets to explicitly force fallback to Column BQ (Index 68)
-                    if len(df_enotif.columns) > 68:
-                        pkd_col_name = df_enotif.columns
+                    cols_list = df_enotif.columns.tolist()
+                    if len(cols_list) > 68:
+                        pkd_col_name = cols_list # Column BQ
                     else:
-                        pkd_col_name = df_enotif.columns[-1]
+                        pkd_col_name = cols_list[-1]
+                
+                # FINAL FAILSAFE: Ensure PKD column and Penyakit column are never identical 
+                # (This completely stops the "cannot assemble with duplicate keys" error)
+                if pkd_col_name == 'Penyakit':
+                    cols_list = df_enotif.columns.tolist()
+                    pkd_col_name = cols_list[2] if len(cols_list) > 2 else cols_list[-1]
 
 
                 # 2. DATE CALCULATIONS
@@ -122,13 +131,13 @@ if file_enotif and file_outbreak:
 
                 # SECTION 2.0: Notifikasi Wabak
                 # Filter outbreaks from 04/01/2026 til yesterday
-                # Column F (Penyakit) is the 6th column (index 5) and AL is the 38th (index 37)
-                if len(df_outbreak.columns) > 37:
-                    col_penyakit_outbreak = df_outbreak.columns[1]
-                    col_date_isytihar = df_outbreak.columns
+                cols_list_ob = df_outbreak.columns.tolist()
+                if len(cols_list_ob) > 37:
+                    col_penyakit_outbreak = cols_list_ob[3]  # Column F
+                    col_date_isytihar = cols_list_ob     # Column AL
                 else:
-                    col_penyakit_outbreak = df_outbreak.columns
-                    col_date_isytihar = df_outbreak.columns[-1]
+                    col_penyakit_outbreak = cols_list_ob
+                    col_date_isytihar = cols_list_ob[-1]
                 
                 df_outbreak[col_date_isytihar] = pd.to_datetime(df_outbreak[col_date_isytihar], dayfirst=True, errors='coerce').dt.date
                 mask = (df_outbreak[col_date_isytihar] >= datetime.date(2026, 1, 4)) & (df_outbreak[col_date_isytihar] <= yesterday)
@@ -342,3 +351,4 @@ if file_enotif and file_outbreak:
             
             except Exception as e:
                 st.error(f"Terdapat ralat semasa menjana laporan: {str(e)}")
+
