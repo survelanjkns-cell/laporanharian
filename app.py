@@ -51,16 +51,39 @@ if file_enotif and file_outbreak:
     if st.button("Jana Laporan (Generate Report)"):
         with st.spinner("Sedang memproses data dan menjana laporan..."):
             try:
-                # 1. READ UPLOADED FILES
-                if file_enotif.name.endswith('csv'):
-                    df_enotif = pd.read_csv(file_enotif)
-                else:
-                    df_enotif = pd.read_excel(file_enotif)
-                    
-                if file_outbreak.name.endswith('csv'):
-                    df_outbreak = pd.read_csv(file_outbreak)
-                else:
-                    df_outbreak = pd.read_excel(file_outbreak)
+                # 1. READ UPLOADED FILES (WITH HEADER DETECTION)
+                def load_kkm_file(file_obj):
+                    if file_obj.name.endswith('csv'):
+                        df = pd.read_csv(file_obj)
+                    else:
+                        df = pd.read_excel(file_obj)
+                        # Many KKM exported Excel files have report titles in the first few rows.
+                        # If pandas reads 'Unnamed' columns, it means it missed the real headers.
+                        if "Unnamed" in str(df.columns):
+                            # Try skipping the first 3 rows (standard for e-notif exports)
+                            df = pd.read_excel(file_obj, header=3)
+                            
+                    # Remove hidden spaces and make uppercase for easy searching
+                    df.columns = df.columns.astype(str).str.strip().str.upper()
+                    return df
+
+
+                df_enotif = load_kkm_file(file_enotif)
+                df_outbreak = load_kkm_file(file_outbreak)
+                
+                # Automatically detect and rename the disease column to 'Penyakit'
+                for col in df_enotif.columns:
+                    if 'PENYAKIT' in col or 'DIAGNOSA' in col or 'DISEASE' in col or 'DIAGNOSIS' in col:
+                        df_enotif.rename(columns={col: 'Penyakit'}, inplace=True)
+                        break
+                        
+                # Failsafe: Forcefully use Column DX (Index 127) if the keyword is still missing
+                if 'Penyakit' not in df_enotif.columns:
+                    if len(df_enotif.columns) > 127:
+                        fallback_col = df_enotif.columns # Column DX is the 128th column
+                    else:
+                        fallback_col = df_enotif.columns[1] if len(df_enotif.columns) > 1 else df_enotif.columns
+                    df_enotif.rename(columns={fallback_col: 'Penyakit'}, inplace=True)
 
 
                 # 2. DATE CALCULATIONS
@@ -75,21 +98,21 @@ if file_enotif and file_outbreak:
                 # 3. PROCESS DATA
                 # SECTION 1.0: E-Notifikasi
                 total_enotif = len(df_enotif)
-                # Assuming 'Penyakit' and column 'BQ' are in the dataset
-                col_bq_name = df_enotif.columns if len(df_enotif.columns) > 68 else df_enotif.columns[-1] # Fallback to last col if BQ doesn't exist exactly
+                # Fallback to column BQ (index 68) or the last column
+                col_bq_name = df_enotif.columns if len(df_enotif.columns) > 68 else df_enotif.columns[-1] 
                 df_jadual_1 = df_enotif.groupby(['Penyakit', col_bq_name]).size().unstack(fill_value=0)
-                if 'Average' in df_jadual_1.columns:
-                    df_jadual_1 = df_jadual_1.drop(columns=['Average'])
+                if 'AVERAGE' in df_jadual_1.columns:
+                    df_jadual_1 = df_jadual_1.drop(columns=['AVERAGE'])
                 df_jadual_1['JUMLAH'] = df_jadual_1.sum(axis=1)
 
 
                 # SECTION 2.0: Notifikasi Wabak
                 # Filter outbreaks from 04/01/2026 til yesterday
-                # Assuming 'F' is the 5th index, 'AL' is the 37th index
-                col_penyakit_outbreak = df_outbreak.columns 
-                col_date_isytihar = df_outbreak.columns 
+                # Assuming Column F (Penyakit) is the 6th column (index 5) and AL is the 38th (index 37)
+                col_penyakit_outbreak = df_outbreak.columns[4] if len(df_outbreak.columns) > 5 else df_outbreak.columns
+                col_date_isytihar = df_outbreak.columns if len(df_outbreak.columns) > 37 else df_outbreak.columns[-1]
                 
-                df_outbreak[col_date_isytihar] = pd.to_datetime(df_outbreak[col_date_isytihar], errors='coerce').dt.date
+                df_outbreak[col_date_isytihar] = pd.to_datetime(df_outbreak[col_date_isytihar], dayfirst=True, errors='coerce').dt.date
                 mask = (df_outbreak[col_date_isytihar] >= datetime.date(2026, 1, 4)) & (df_outbreak[col_date_isytihar] <= yesterday)
                 df_outbreak_filtered = df_outbreak[mask]
                 
@@ -131,7 +154,7 @@ if file_enotif and file_outbreak:
                     df_bencana_2026 = pd.read_csv(url_bencana_2026)
                     df_jadual_4 = pd.read_csv(url_bencana_table)
                     # Check column C (index 2) for yesterday's date
-                    col_c_dates = pd.to_datetime(df_bencana_2026.iloc[:, 2], format='%d/%m/%Y', errors='coerce').dt.date
+                    col_c_dates = pd.to_datetime(df_bencana_2026.iloc[:, 2], dayfirst=True, errors='coerce').dt.date
                     total_insiden_yesterday = (col_c_dates == yesterday).sum()
                 except:
                     total_insiden_yesterday = 0
@@ -163,8 +186,8 @@ if file_enotif and file_outbreak:
                 table_hdr.style = 'Table Grid'
                 row = table_hdr.rows.cells
                 row.text = f"Tarikh : {tarikh_today_str}"
-                row.text = "(Sehingga jam 10.00 pagi)"
-                row.text = f"Minggu Epidemiologi : {epid_week}/{today.year}"
+                row[1].text = "(Sehingga jam 10.00 pagi)"
+                row[5].text = f"Minggu Epidemiologi : {epid_week}/{today.year}"
                 for cell in row:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
@@ -184,10 +207,10 @@ if file_enotif and file_outbreak:
                 t1.style = 'Table Grid'
                 hdr_cells = t1.rows.cells
                 hdr_cells.text = "PENYAKIT"
+                set_cell_background(hdr_cells, "D9D9D9")
                 for i, col in enumerate(df_jadual_1.columns):
                     hdr_cells[i+1].text = str(col).upper()
                     set_cell_background(hdr_cells[i+1], "D9D9D9")
-                set_cell_background(hdr_cells, "D9D9D9")
 
 
                 for index, row_data in df_jadual_1.iterrows():
@@ -212,7 +235,7 @@ if file_enotif and file_outbreak:
                     for i, text in enumerate(["PENYAKIT", "HARIAN", "KUMULATIF"]):
                         hdr_cells[i].text = text
                         set_cell_background(hdr_cells[i], "D9D9D9")
-                    for cell in t2.rows.cells:
+                    for cell in t2.rows[1].cells:
                         cell.text = "0"
                 else:
                     doc.add_paragraph(f"2.1 Sejumlah {total_outbreak} input notifikasi wabak telah diterima pada {tarikh_yesterday_str} dengan pecahan mengikut penyakit seperti dalam jadual 2.")
@@ -227,8 +250,8 @@ if file_enotif and file_outbreak:
                     for _, row_data in df_jadual_2.iterrows():
                         row_cells = t2.add_row().cells
                         row_cells.text = str(row_data['PENYAKIT'])
-                        row_cells.text = str(int(row_data['HARIAN']))
-                        row_cells.text = str(int(row_data['KUMULATIF']))
+                        row_cells[1].text = str(int(row_data['HARIAN']))
+                        row_cells[5].text = str(int(row_data['KUMULATIF']))
 
 
                 # Section 3.0
@@ -236,7 +259,7 @@ if file_enotif and file_outbreak:
                 p3 = doc.add_paragraph()
                 p3.add_run("3.0 Ringkasan Laporan Input Enotifikasi").bold = True 
                 
-                if df_jadual_3.empty:
+                if df_jadual_3.empty or df_jadual_3.isna().all().all():
                     doc.add_paragraph(f"3.1 Tiada notifikasi wabak vektor diterima pada {tarikh_yesterday_str}.")
                 else:
                     doc.add_paragraph(f"3.1 Sejumlah xx input notifikasi wabak vektor telah diterima pada {tarikh_yesterday_str} dengan pecahan mengikut penyakit seperti dalam jadual 3.")
@@ -251,7 +274,7 @@ if file_enotif and file_outbreak:
                     for _, row_data in df_jadual_3.iterrows():
                         row_cells = t3.add_row().cells
                         for i, val in enumerate(row_data):
-                            row_cells[i].text = str(val)
+                            row_cells[i].text = str(val) if pd.notna(val) else ""
 
 
                 # Section 4.0
@@ -274,7 +297,7 @@ if file_enotif and file_outbreak:
                     for _, row_data in df_jadual_4.iterrows():
                         row_cells = t4.add_row().cells
                         for i, val in enumerate(row_data):
-                            row_cells[i].text = str(val)
+                            row_cells[i].text = str(val) if pd.notna(val) else ""
 
 
                 # Footer
@@ -301,4 +324,5 @@ if file_enotif and file_outbreak:
             
             except Exception as e:
                 st.error(f"Terdapat ralat semasa menjana laporan: {str(e)}")
+
 
