@@ -81,8 +81,10 @@ if file_enotif and file_outbreak:
                 if 'Penyakit' not in df_enotif.columns:
                     if len(df_enotif.columns) > 127:
                         fallback_col = df_enotif.columns # Column DX is the 128th column
+                    elif len(df_enotif.columns) > 1:
+                        fallback_col = df_enotif.columns[1] # Target index 1
                     else:
-                        fallback_col = df_enotif.columns[1] if len(df_enotif.columns) > 1 else df_enotif.columns
+                        fallback_col = df_enotif.columns # Target index 0
                     df_enotif.rename(columns={fallback_col: 'Penyakit'}, inplace=True)
 
 
@@ -109,7 +111,7 @@ if file_enotif and file_outbreak:
                 # SECTION 2.0: Notifikasi Wabak
                 # Filter outbreaks from 04/01/2026 til yesterday
                 # Assuming Column F (Penyakit) is the 6th column (index 5) and AL is the 38th (index 37)
-                col_penyakit_outbreak = df_outbreak.columns[4] if len(df_outbreak.columns) > 5 else df_outbreak.columns
+                col_penyakit_outbreak = df_outbreak.columns[2] if len(df_outbreak.columns) > 5 else df_outbreak.columns
                 col_date_isytihar = df_outbreak.columns if len(df_outbreak.columns) > 37 else df_outbreak.columns[-1]
                 
                 df_outbreak[col_date_isytihar] = pd.to_datetime(df_outbreak[col_date_isytihar], dayfirst=True, errors='coerce').dt.date
@@ -187,7 +189,7 @@ if file_enotif and file_outbreak:
                 row = table_hdr.rows.cells
                 row.text = f"Tarikh : {tarikh_today_str}"
                 row[1].text = "(Sehingga jam 10.00 pagi)"
-                row[5].text = f"Minggu Epidemiologi : {epid_week}/{today.year}"
+                row[3].text = f"Minggu Epidemiologi : {epid_week}/{today.year}"
                 for cell in row:
                     for paragraph in cell.paragraphs:
                         for run in paragraph.runs:
@@ -251,7 +253,7 @@ if file_enotif and file_outbreak:
                         row_cells = t2.add_row().cells
                         row_cells.text = str(row_data['PENYAKIT'])
                         row_cells[1].text = str(int(row_data['HARIAN']))
-                        row_cells[5].text = str(int(row_data['KUMULATIF']))
+                        row_cells[3].text = str(int(row_data['KUMULATIF']))
 
 
                 # Section 3.0
@@ -324,5 +326,4 @@ if file_enotif and file_outbreak:
             
             except Exception as e:
                 st.error(f"Terdapat ralat semasa menjana laporan: {str(e)}")
-
 
