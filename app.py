@@ -51,7 +51,7 @@ if file_enotif and file_outbreak:
     if st.button("Jana Laporan (Generate Report)"):
         with st.spinner("Sedang memproses data dan menjana laporan..."):
             try:
-                # 1. READ UPLOADED FILES
+               # 1. READ UPLOADED FILES
                 if file_enotif.name.endswith('csv'):
                     df_enotif = pd.read_csv(file_enotif)
                 else:
@@ -62,6 +62,16 @@ if file_enotif and file_outbreak:
                 else:
                     df_outbreak = pd.read_excel(file_outbreak)
 
+                # --- NEW FIX: Clean up column names to prevent 'KeyError' ---
+                # Remove any invisible spaces from the headers in both files
+                df_enotif.columns = df_enotif.columns.astype(str).str.strip()
+                df_outbreak.columns = df_outbreak.columns.astype(str).str.strip()
+                
+                # Automatically rename the disease column to exactly 'Penyakit' regardless of its original case
+                for col in df_enotif.columns:
+                    if col.upper() == 'PENYAKIT':
+                        df_enotif.rename(columns={col: 'Penyakit'}, inplace=True)
+                        break
 
                 # 2. DATE CALCULATIONS
                 today = datetime.date.today()
